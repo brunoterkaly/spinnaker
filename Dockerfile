@@ -12,4 +12,8 @@ RUN apt-get install -y curl
 #RUN bash -xc "$(curl -s https://raw.githubusercontent.com/spinnaker/spinnaker/master/InstallSpinnaker.sh)"
 
 
-curl -s https://raw.githubusercontent.com/spinnaker/spinnaker/master/InstallSpinnaker.sh
+# We can only currently support limited releases
+# First guess what sort of operating system
+ADD installSpinnaker.sh /
+ENTRYPOINT ["/bin/bash", "/installSpinnaker.sh"]
+
