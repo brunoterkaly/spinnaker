@@ -4,14 +4,14 @@
 
 
 set -e
-set -o pipefail
+#DX set -o pipefail
 
 REPOSITORY_URL="https://dl.bintray.com/spinnaker/debians"
 
 
 # This script uses the following global variables.
 AWS_ENABLED=false     # set by --cloud_providers
-AZURE_ENABLED=false   # set by --cloud_providers
+AZURE_ENABLED=true   # set by --cloud_providers
 GOOGLE_ENABLED=false  # set by --cloud_providers
 
 INSTALL_CASSANDRA=    # default depends on platform
@@ -36,6 +36,8 @@ if [[ `/usr/bin/id -u` -ne 0 ]]; then
   echo "$0 must be executed with root permissions; exiting"
   exit 1
 fi
+
+
 
 if [[ -f /etc/lsb-release ]]; then
   . /etc/lsb-release
@@ -286,7 +288,8 @@ function set_azure_region() {
       DEFAULT_AZURE_REGION="westus"
     fi
 
-    prompt_if_unset AZURE_REGION "$DEFAULT_AZURE_REGION" "Specify default azure region (westus, centralus, eastus, eastus2): "
+    DEFAULT_AZURE_REGION="westus"
+    #prompt_if_unset AZURE_REGION "$DEFAULT_AZURE_REGION" "Specify default azure region (westus, centralus, eastus, eastus2): "
   fi
 }
 
@@ -428,7 +431,12 @@ function add_apt_repositories() {
 
 function install_java() {
   if ! $DOWNLOAD; then
-    apt-get install -y --force-yes openjdk-8-jdk
+     add-apt-repository ppa:openjdk-r/ppa
+     apt-get update
+     apt-get install -y openjdk-8-jdk
+
+
+     #DX comment => apt-get install -y --force-yes openjdk-8-jdk
 
     # https://bugs.launchpad.net/ubuntu/+source/ca-certificates-java/+bug/983302
     # It seems a circular dependency was introduced on 2016-04-22 with an openjdk-8 release, where
@@ -442,6 +450,7 @@ function install_java() {
     exit 13
   fi
 }
+
 
 function install_platform_dependencies() {
   local google_scopes=$(get_google_metadata_value "instance/service-accounts/default/scopes")
@@ -603,29 +612,6 @@ EOF
     sleep 1
   fi
 
-  # Let cassandra start
-  if ! nc -z localhost 7199; then
-    echo_status "Waiting for Cassandra to start..."
-    count=0
-    while ! nc -z localhost 7199; do
-      sleep 1
-      count=`expr $count + 1`
-      if [[ $count -eq 30 ]]; then
-        break
-      fi
-    done
-    if ! nc -z localhost 7199; then
-      echo "Cassandra has failed to start; exiting"
-      exit 13
-    else
-      echo_status "Cassandra is ready."
-    fi
-  fi
-
-  while ! $(nodetool enablethrift >& /dev/null); do
-    sleep 1
-    echo_status "Retrying..."
-  done
 }
 
 function install_spinnaker() {
@@ -649,16 +635,15 @@ function install_spinnaker() {
   fi
 
 }
-
-
-
 set_defaults_from_environ
 
 process_args "$@"
 
-prompt_if_unset CLOUD_PROVIDER "$DEFAULT_CLOUD_PROVIDER" "Specify a cloud provider (aws|azure|google|none): "
+#prompt_if_unset CLOUD_PROVIDER "$DEFAULT_CLOUD_PROVIDER" "Specify a cloud provider (aws|azure|google|none): "
+DEFAULT_CLOUD_PROVIDER="azure"
 
 process_provider_list
+
 
 #enable cloud provider specific settings
 if $AWS_ENABLED; then
@@ -675,7 +660,121 @@ if $GOOGLE_ENABLED; then
 fi
 
 
+# DX comment
+
+apt-get install -y software-properties-common python-software-properties
+add-apt-repository ppa:git-core/ppa
+apt-get update
+apt-get install -y git
+ 
+
+
 # Only add external apt repositories if we are not --local_install
 if ! $DOWNLOAD; then
   add_apt_repositories
+fi
+
+TEMPDIR=$(mktemp -d installspinnaker.XXXX)
+
+
+TEMPDIR=$(mktemp -d installspinnaker.XXXX)
+
+
+# DX comment
+
+apt-get install -y --force-yes apt-transport-https
+
+install_java
+install_apache2
+install_platform_dependencies
+
+install_dependencies
+install_redis_server
+if [[ "$INSTALL_CASSANDRA" != "false" ]]; then
+  install_cassandra
+fi
+
+## Packer
+mkdir $TEMPDIR/packer && pushd $TEMPDIR/packer
+curl -s -L -O https://releases.hashicorp.com/packer/0.10.2/packer_0.10.2_linux_amd64.zip
+unzip -u -o -q packer_0.10.2_linux_amd64.zip -d /usr/bin
+popd
+rm -rf $TEMPDIR/packer
+
+rm -rf $TEMPDIR
+
+if $DEPENDENCIES_ONLY; then
+  exit 0
+fi
+
+
+## Spinnaker
+install_spinnaker
+
+
+# Write values to /etc/default/spinnaker.
+if [[ $AWS_ENABLED || $AZURE_ENABLED || $GOOGLE_ENABLED ]] ; then
+  if [[ $AWS_ENABLED == true ]] ; then
+    write_default_value "SPINNAKER_AWS_ENABLED" "true"
+    write_default_value "SPINNAKER_AWS_DEFAULT_REGION" $AWS_REGION
+    write_default_value "AWS_VPC_ID" $AWS_VPC_ID
+    write_default_value "AWS_SUBNET_ID" $AWS_SUBNET_ID
+  fi
+  if [[ $AZURE_ENABLED == true ]] ; then
+    write_default_value "SPINNAKER_AZURE_ENABLED" "true"
+    write_default_value "SPINNAKER_AZURE_DEFAULT_REGION" $AZURE_REGION
+  fi
+  if [[ $GOOGLE_ENABLED == true ]] ; then
+    write_default_value "SPINNAKER_GOOGLE_ENABLED" "true"
+    write_default_value "SPINNAKER_GOOGLE_PROJECT_ID" $GOOGLE_PROJECT_ID
+    write_default_value "SPINNAKER_GOOGLE_DEFAULT_REGION" $GOOGLE_REGION
+    write_default_value "SPINNAKER_GOOGLE_DEFAULT_ZONE" $GOOGLE_ZONE
+  fi
+else
+  echo "Not enabling a cloud provider"
+fi
+
+## Remove
+
+if [[ "$homebase" == ""  ]]; then
+  homebase="/home"
+  echo "Setting spinnaker home to $homebase"
+fi
+
+if [[ -z `getent group spinnaker` ]]; then
+  groupadd spinnaker
+fi
+
+if [[ -z `getent passwd spinnaker` ]]; then
+  useradd --gid spinnaker -m --home-dir $homebase/spinnaker spinnaker
+fi
+
+if [[ ! -d $homebase/spinnaker ]]; then
+  mkdir -p $homebase/spinnaker/.aws
+  chown -R spinnaker:spinnaker $homebase/spinnaker
+fi
+##
+
+
+
+if ! $QUIET; then
+cat <<EOF
+
+To stop all spinnaker subsystems:
+  sudo stop spinnaker
+
+To start all spinnaker subsystems:
+  sudo start spinnaker
+
+To configure the available cloud providers:
+  Edit:   /etc/default/spinnaker
+  And/Or: /opt/spinnaker/config/spinnaker-local.yml
+
+  Next, ensure that the regions configured in deck are up-to-date:
+    sudo /opt/spinnaker/bin/reconfigure_spinnaker.sh
+
+  Lastly, restart clouddriver and rosco with:
+    sudo service clouddriver restart
+    sudo service rosco restart
+EOF
 fi

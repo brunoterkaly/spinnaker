@@ -15,5 +15,8 @@ RUN apt-get install -y curl
 # We can only currently support limited releases
 # First guess what sort of operating system
 ADD installSpinnaker.sh /
-ENTRYPOINT ["/bin/bash", "/installSpinnaker.sh"]
+#ENTRYPOINT ["/bin/bash", "/installSpinnaker.sh"]
+
+RUN chmod +x /installSpinnaker.sh
+RUN bash ./installSpinnaker.sh
 
