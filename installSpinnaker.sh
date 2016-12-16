@@ -755,26 +755,24 @@ if [[ ! -d $homebase/spinnaker ]]; then
 fi
 ##
 
-
-
-if ! $QUIET; then
-cat <<EOF
-
-To stop all spinnaker subsystems:
-  sudo stop spinnaker
-
-To start all spinnaker subsystems:
-  sudo start spinnaker
-
-To configure the available cloud providers:
-  Edit:   /etc/default/spinnaker
-  And/Or: /opt/spinnaker/config/spinnaker-local.yml
-
-  Next, ensure that the regions configured in deck are up-to-date:
-    sudo /opt/spinnaker/bin/reconfigure_spinnaker.sh
-
-  Lastly, restart clouddriver and rosco with:
-    sudo service clouddriver restart
-    sudo service rosco restart
-EOF
-fi
+##if ! $QUIET; then
+##cat <<EOF
+##
+##To stop all spinnaker subsystems:
+##  sudo stop spinnaker
+##
+##To start all spinnaker subsystems:
+##  sudo start spinnaker
+##
+##To configure the available cloud providers:
+##  Edit:   /etc/default/spinnaker
+##  And/Or: /opt/spinnaker/config/spinnaker-local.yml
+##
+##  Next, ensure that the regions configured in deck are up-to-date:
+##    sudo /opt/spinnaker/bin/reconfigure_spinnaker.sh
+##
+##  Lastly, restart clouddriver and rosco with:
+##    sudo service clouddriver restart
+##    sudo service rosco restart
+##EOF
+##fi
